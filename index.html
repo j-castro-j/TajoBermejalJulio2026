@@ -2,52 +2,164 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Visor Topográfico 3D</title>
+  <title>Visor Topográfico 3D - Control Ejecutivo</title>
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
   <style>
-    html, body, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #1a1a1a; }
+    html, body, #cesiumContainer {
+      width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #121519; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* Panel superior: Título y accesos rápidos */
+    .top-bar {
+      position: absolute; top: 16px; left: 16px; z-index: 10;
+      background: rgba(18, 21, 25, 0.85); backdrop-filter: blur(8px);
+      padding: 10px 18px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #f0f3f6; display: flex; align-items: center; gap: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+    .top-bar h1 {
+      margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: #58a6ff;
+    }
+    .nav-btn {
+      background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #e6edf3; padding: 5px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+    }
+    .nav-btn:hover { background: #1f6feb; border-color: #58a6ff; }
+
+    /* Panel inferior izquierdo: Coordenadas y Cota */
+    .coords-card {
+      position: absolute; bottom: 20px; left: 16px; z-index: 10;
+      background: rgba(18, 21, 25, 0.85); backdrop-filter: blur(8px);
+      padding: 8px 14px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #c9d1d9; font-size: 12px; font-family: "SFMono-Regular", Consolas, monospace;
+      display: flex; gap: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .coord-item span { color: #58a6ff; font-weight: bold; }
+
+    /* Panel inferior derecho: Barra de escala gráfica */
+    .scale-card {
+      position: absolute; bottom: 20px; right: 16px; z-index: 10;
+      background: rgba(18, 21, 25, 0.85); backdrop-filter: blur(8px);
+      padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #c9d1d9; font-size: 11px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .scale-line {
+      height: 4px; border: 2px solid #58a6ff; border-top: none; margin: 4px auto 2px auto;
+    }
   </style>
 </head>
 <body>
+
+  <!-- Barra de título y botones rápidos -->
+  <div class="top-bar">
+    <h1>Levantamiento 3D</h1>
+    <button class="nav-btn" onclick="resetNorth()">Norte</button>
+    <button class="nav-btn" onclick="topView()">Planta (2D)</button>
+    <button class="nav-btn" onclick="perspectiveView()">Perspectiva 3D</button>
+  </div>
+
+  <!-- Barra de coordenadas en tiempo real -->
+  <div class="coords-card">
+    <div class="coord-item">Lat: <span id="lat">--</span></div>
+    <div class="coord-item">Lon: <span id="lon">--</span></div>
+    <div class="coord-item">Cota Z: <span id="elev">--</span> m</div>
+  </div>
+
+  <!-- Barra de escala gráfica -->
+  <div class="scale-card">
+    <div id="scaleText">-- m</div>
+    <div id="scaleBar" class="scale-line" style="width: 100px;"></div>
+  </div>
+
   <div id="cesiumContainer"></div>
+
   <script>
+    // 1. CREDENCIALES
     Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IjlnWjh5WnZVbTRSZ2s5eGUiLCJqdGkiOiI0NzQyZDU1ZS1lNzcwLTQ1OTEtYmVkMS1hYWFkYzJjNTRjYzYiLCJpZCI6NDc3MzE0LCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoidW5kZWZpbmVkX2RlZmF1bHQiLCJpYXQiOjE3ODgxOTYzMzR9.d7HeXTwGpKuVONPPBcghXZlISjckj1wtQnxBnAMTi9M';
 
     const viewer = new Cesium.Viewer('cesiumContainer', {
-      // 1. Desactivamos elementos innecesarios
       timeline: false,
       animation: false,
       baseLayerPicker: false,
       geocoder: false,
       homeButton: false,
       sceneModePicker: false,
-      navigationHelpButton: false
+      navigationHelpButton: false,
+      infoBox: false,
+      selectionIndicator: false
     });
 
-    // 2. OCULTAR EL GLOBO TERRÁQUEO Y LA ATMÓSFERA
+    // 2. FONDO OSCURO LIMPIO
     viewer.scene.globe.show = false;
-    viewer.scene.skyAtmosphere.show = false;
-    viewer.scene.skyBox.show = false;
-    viewer.scene.sun.show = false;
-    viewer.scene.moon.show = false;
+    if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = false;
+    if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
+    if (viewer.scene.sun) viewer.scene.sun.show = false;
+    if (viewer.scene.moon) viewer.scene.moon.show = false;
+    viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#121519');
 
-    // 3. Fondo neutro oscuro (estilo visor 3D profesional)
-    viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#1e1e1e');
+    let currentTileset = null;
 
-    // 4. Cargar la malla en alta definición
+    // 3. CARGA DE LA MALLA
     Cesium.Cesium3DTileset.fromIonAssetId(5179943, {
       maximumScreenSpaceError: 2
     }).then(function(tileset) {
+      currentTileset = tileset;
       viewer.scene.primitives.add(tileset);
-
-      // Cámara inicial con perspectiva oblicua
-      const heading = Cesium.Math.toRadians(45);
-      const pitch = Cesium.Math.toRadians(-35);
-      viewer.zoomTo(tileset, new Cesium.HeadingPitchRange(heading, pitch, 0));
+      perspectiveView();
     }).catch(function(error) {
-      console.log('Error al cargar el modelo:', error);
+      console.log('Error al cargar la malla:', error);
     });
+
+    // 4. FUNCIONES DE VISTA DE CÁMARA
+    function resetNorth() {
+      if (!currentTileset) return;
+      const camera = viewer.camera;
+      viewer.zoomTo(currentTileset, new Cesium.HeadingPitchRange(0, camera.pitch, camera.positionCartographic.height));
+    }
+
+    function topView() {
+      if (!currentTileset) return;
+      viewer.zoomTo(currentTileset, new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-89.9), 0));
+    }
+
+    function perspectiveView() {
+      if (!currentTileset) return;
+      viewer.zoomTo(currentTileset, new Cesium.HeadingPitchRange(Cesium.Math.toRadians(45), Cesium.Math.toRadians(-35), 0));
+    }
+
+    // 5. SEGUIMIENTO DE COORDENADAS Y COTA (ELEVACIÓN)
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    handler.setInputAction(function(movement) {
+      const pickedPosition = viewer.scene.pickPosition(movement.endPosition);
+      if (Cesium.defined(pickedPosition)) {
+        const cartographic = Cesium.Cartographic.fromCartesian(pickedPosition);
+        document.getElementById('lat').innerText = Cesium.Math.toDegrees(cartographic.latitude).toFixed(5) + '°';
+        document.getElementById('lon').innerText = Cesium.Math.toDegrees(cartographic.longitude).toFixed(5) + '°';
+        document.getElementById('elev').innerText = cartographic.height.toFixed(2);
+      }
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    // 6. CÁLCULO DINÁMICO DE LA BARRA DE ESCALA
+    function updateScaleBar() {
+      const width = 100; // Ancho base en píxeles
+      const center = new Cesium.Cartesian2(viewer.canvas.clientWidth / 2, viewer.canvas.clientHeight / 2);
+      const right = new Cesium.Cartesian2(center.x + width, center.y);
+
+      const p1 = viewer.scene.pickPosition(center);
+      const p2 = viewer.scene.pickPosition(right);
+
+      if (Cesium.defined(p1) && Cesium.defined(p2)) {
+        const dist = Cesium.Cartesian3.distance(p1, p2);
+        if (dist > 1000) {
+          document.getElementById('scaleText').innerText = (dist / 1000).toFixed(2) + ' km';
+        } else {
+          document.getElementById('scaleText').innerText = dist.toFixed(1) + ' m';
+        }
+      }
+    }
+
+    // Actualiza la escala en cada movimiento o zoom de cámara
+    viewer.camera.changed.addEventListener(updateScaleBar);
   </script>
 </body>
 </html>
